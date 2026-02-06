@@ -81,6 +81,12 @@ endif()
 
 option(BUILD_SHARED_LIBS           "ggml: build shared libraries" ${BUILD_SHARED_LIBS_DEFAULT})
 option(GGML_BACKEND_DL             "ggml: build backends as dynamic libraries (requires BUILD_SHARED_LIBS)" OFF)
+
+# Force shared ggml + dynamic backends when used as a subproject (so ggml.dll + ggml-vulkan.dll are produced)
+if (NOT GGML_STANDALONE)
+    set(BUILD_SHARED_LIBS ON  CACHE BOOL "ggml: build shared libraries" FORCE)
+    set(GGML_BACKEND_DL   ON  CACHE BOOL "ggml: build backends as dynamic libraries" FORCE)
+endif()
 set(GGML_BACKEND_DIR "" CACHE PATH "ggml: directory to load dynamic backends from (requires GGML_BACKEND_DL")
 
 #
