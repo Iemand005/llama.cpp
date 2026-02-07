@@ -29,7 +29,6 @@
     #ifndef NOMINMAX
         #define NOMINMAX
     #endif
-    #include <winapifamily.h>
     #include <windows.h>
     #ifndef PATH_MAX
         #define PATH_MAX MAX_PATH
@@ -661,7 +660,7 @@ struct llama_mlock::impl {
                 return false;
             }
 
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && FALSE
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && !defined(LLAMA_UWP)
             SIZE_T min_ws_size, max_ws_size;
             if (!GetProcessWorkingSetSize(GetCurrentProcess(), &min_ws_size, &max_ws_size)) {
                 LLAMA_LOG_WARN("warning: GetProcessWorkingSetSize failed: %s\n",
