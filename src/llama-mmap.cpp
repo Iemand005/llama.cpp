@@ -661,7 +661,7 @@ struct llama_mlock::impl {
                 return false;
             }
 
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && FALSE
             SIZE_T min_ws_size, max_ws_size;
             if (!GetProcessWorkingSetSize(GetCurrentProcess(), &min_ws_size, &max_ws_size)) {
                 LLAMA_LOG_WARN("warning: GetProcessWorkingSetSize failed: %s\n",
@@ -677,7 +677,7 @@ struct llama_mlock::impl {
                 return false;
             }
 #else
-            LLAMA_LOG_WARN("warning: VirtualLock failed and working set adjustment is unavailable in AppContainer\n");
+            LLAMA_LOG_WARN("warning: MMAP is not supported for UWP\n");
             return false;
 #endif
         }
