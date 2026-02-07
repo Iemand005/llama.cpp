@@ -29,6 +29,7 @@
     #ifndef NOMINMAX
         #define NOMINMAX
     #endif
+    #include <winapifamily.h>
     #include <windows.h>
     #ifndef PATH_MAX
         #define PATH_MAX MAX_PATH
