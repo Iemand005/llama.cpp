@@ -251,6 +251,9 @@ struct mtmd_helper_gen_audio_inp {
     uint32_t seed; // UINT32_MAX for random (default: random)
 
     enum mtmd_helper_gen_audio_outtype out_type;
+
+    // optional, can be NULL: natural-language style / voice description (e.g. Qwen3-TTS)
+    const char * instruct;
 };
 
 MTMD_API struct mtmd_helper_gen_audio_inp mtmd_helper_gen_audio_inp_default(void);
@@ -345,6 +348,7 @@ struct gen_audio {
         mtmd_helper_gen_audio_inp data = mtmd_helper_gen_audio_inp_default();
         std::string prompt_str;
         std::string lang_str;
+        std::string instruct_str;
         mtmd::bitmap_ptr speaker_ref_ptr;
 
         inp()                             = default;
@@ -355,6 +359,7 @@ struct gen_audio {
 
         void set_prompt     (std::string p)        { prompt_str = std::move(p); }
         void set_lang       (std::string l)        { lang_str   = std::move(l); }
+        void set_instruct   (std::string i)        { instruct_str = std::move(i); }
         void set_speaker_ref(mtmd::bitmap_ptr bmp) { speaker_ref_ptr = std::move(bmp); }
 
         // pointers are only valid as long as *this is alive
@@ -362,6 +367,7 @@ struct gen_audio {
             data.prompt      = prompt_str.c_str();
             data.prompt_len  = prompt_str.size();
             data.lang        = lang_str.empty() ? nullptr : lang_str.c_str();
+            data.instruct    = instruct_str.empty() ? nullptr : instruct_str.c_str();
             data.speaker_ref = speaker_ref_ptr.get();
             return &data;
         }

@@ -241,6 +241,21 @@ public:
         ids.resize((size_t) n_ids);
 
         std::vector<std::vector<float>> prompt;
+
+        // optional instruct block, plain text rows (no codec_pad) placed before the role tokens,
+        // same as upstream: "<|im_start|>user\n{instruct}<|im_end|>\n"
+        if (inp->instruct && inp->instruct[0]) {
+            const std::string ins = "<|im_start|>user\n" + std::string(inp->instruct) + "<|im_end|>\n";
+            std::vector<llama_token> ins_ids(ins.size() + 16);
+            const int n_ins = llama_tokenize(vocab, ins.c_str(), (int32_t) ins.size(), ins_ids.data(),
+                                             (int32_t) ins_ids.size(), false, true);
+            if (n_ins <= 0) {
+                LOG_ERR("mtmd_helper_gen_audio: instruct tokenization failed\n");
+                return 1;
+            }
+            for (int i = 0; i < n_ins; i++) prompt.push_back(row(ins_ids[(size_t) i]));
+        }
+
         for (int i = 0; i < 3; i++) prompt.push_back(row(ids[(size_t) i]));
         prompt.push_back(sum_row(tts_pad, c_think));
         prompt.push_back(sum_row(tts_pad, c_think_b));
