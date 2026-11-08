@@ -7,13 +7,14 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <set>
 #include <sstream>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <unordered_map>
 
 namespace jinja {
 
@@ -86,7 +87,7 @@ struct context; // forward declaration
 // marking input can be useful for tracking data provenance
 // and preventing template injection attacks
 //
-// Note: T_JSON can be nlohmann::ordered_json
+// Note: T_JSON can be common_json
 template<typename T_JSON>
 void global_from_json(context & ctx, const T_JSON & json_obj, bool mark_input);
 
@@ -118,6 +119,8 @@ struct value_t {
         bool used = false;
         // ops can be builtin calls or operators: "array_access", "object_access"
         std::set<std::string> ops;
+        // utility to recursively mark value and its children as used
+        static void mark_used(value & val, bool deep = false, int depth = 0);
     } stats;
 
     value_t() = default;
@@ -127,27 +130,25 @@ struct value_t {
     // Note: only for debugging and error reporting purposes
     virtual std::string type() const { return ""; }
 
-    virtual int64_t as_int() const { throw std::runtime_error(type() + " is not an int value"); }
-    virtual double as_float() const { throw std::runtime_error(type() + " is not a float value"); }
-    virtual string as_string() const { throw std::runtime_error(type() + " is not a string value"); }
-    virtual bool as_bool() const { throw std::runtime_error(type() + " is not a bool value"); }
-    virtual const std::vector<value> & as_array() const { throw std::runtime_error(type() + " is not an array value"); }
-    virtual const std::vector<std::pair<value, value>> & as_ordered_object() const { throw std::runtime_error(type() + " is not an object value"); }
-    virtual value invoke(const func_args &) const { throw std::runtime_error(type() + " is not a function value"); }
+    virtual int64_t as_int() const { throw_type_error("is not an int value"); }
+    virtual double as_float() const { throw_type_error("is not a float value"); }
+    virtual string as_string() const { throw_type_error("is not a string value"); }
+    virtual bool as_bool() const { throw_type_error("is not a bool value"); }
+    virtual const std::vector<value> & as_array() const { throw_type_error("is not an array value"); }
+    virtual const std::vector<std::pair<value, value>> & as_ordered_object() const { throw_type_error("is not an object value"); }
+    virtual value invoke(const func_args &) const { throw_type_error("is not a function value"); }
     virtual bool is_none() const { return false; }
     virtual bool is_undefined() const { return false; }
-    virtual const func_builtins & get_builtins() const {
-        throw std::runtime_error("No builtins available for type " + type());
-    }
+    virtual const func_builtins & get_builtins() const { throw_type_error("has no builtins"); }
 
-    virtual bool has_key(const value &) { throw std::runtime_error(type() + " is not an object value"); }
-    virtual void insert(const value & /* key */, const value & /* val */) { throw std::runtime_error(type() + " is not an object value"); }
-    virtual value & at(const value & /* key */, value & /* default_val */) { throw std::runtime_error(type() + " is not an object value"); }
-    virtual value & at(const value & /* key */) { throw std::runtime_error(type() + " is not an object value"); }
-    virtual value & at(const std::string & /* key */, value & /* default_val */) { throw std::runtime_error(type() + " is not an object value"); }
-    virtual value & at(const std::string & /* key */) { throw std::runtime_error(type() + " is not an object value"); }
-    virtual value & at(int64_t /* idx */, value & /* default_val */) { throw std::runtime_error(type() + " is not an array value"); }
-    virtual value & at(int64_t /* idx */) { throw std::runtime_error(type() + " is not an array value"); }
+    virtual bool has_key(const value &) { throw_type_error("is not an object value"); }
+    virtual void insert(const value & /* key */, const value & /* val */) { throw_type_error("is not an object value"); }
+    virtual value & at(const value & /* key */, value & /* default_val */) { throw_type_error("is not an object value"); }
+    virtual value & at(const value & /* key */) { throw_type_error("is not an object value"); }
+    virtual value & at(const std::string & /* key */, value & /* default_val */) { throw_type_error("is not an object value"); }
+    virtual value & at(const std::string & /* key */) { throw_type_error("is not an object value"); }
+    virtual value & at(int64_t /* idx */, value & /* default_val */) { throw_type_error("is not an array value"); }
+    virtual value & at(int64_t /* idx */) { throw_type_error("is not an array value"); }
 
     virtual bool is_numeric() const { return false; }
     virtual bool is_hashable() const { return false; }
@@ -161,6 +162,11 @@ struct value_t {
     // Note: only for debugging purposes
     virtual std::string as_repr() const { return as_string().str(); }
 
+private:
+    [[noreturn]] void throw_type_error(const char* expected) const {
+        throw std::runtime_error(type() + " " + expected);
+    }
+
 protected:
     virtual bool equivalent(const value_t &) const = 0;
     virtual bool nonequal(const value_t & other) const { return !equivalent(other); }
@@ -171,6 +177,8 @@ protected:
 //
 
 const func_builtins & global_builtins();
+value try_builtin_func(context & ctx, const std::string & name, value & input, bool undef_on_missing = false);
+value apply_filter_by_name(context & ctx, std::string filter_id, value input, const func_args & args);
 
 std::string value_to_json(const value & val, int indent = -1, const std::string_view item_sep = ", ", const std::string_view key_sep = ": ");
 
@@ -428,6 +436,12 @@ struct value_array_t : public value_t {
         }
         return val_arr[index];
     }
+    virtual value & at(const value & index, value & default_val) override {
+        if (!is_val<value_int>(index) && !is_val<value_bool>(index)) {
+            return default_val;
+        }
+        return at(index->as_int(), default_val);
+    }
     virtual const func_builtins & get_builtins() const override;
     virtual bool is_hashable() const override {
         if (std::all_of(val_arr.begin(), val_arr.end(), [&](auto & val) -> bool {
@@ -449,7 +463,7 @@ struct value_array_t : public value_t {
     }
 protected:
     virtual bool equivalent(const value_t & other) const override {
-        return typeid(*this) == typeid(other) && is_hashable() && other.is_hashable() && std::equal(val_arr.begin(), val_arr.end(), other.val_arr.begin(), value_equivalence());
+        return typeid(*this) == typeid(other) && is_hashable() && other.is_hashable() && std::equal(val_arr.begin(), val_arr.end(), other.val_arr.begin(), other.val_arr.end(), value_equivalence());
     }
 };
 using value_array = std::shared_ptr<value_array_t>;
@@ -585,7 +599,7 @@ struct value_object_t : public value_t {
     }
 protected:
     virtual bool equivalent(const value_t & other) const override {
-        return typeid(*this) == typeid(other) && is_hashable() && other.is_hashable() && std::equal(val_obj.begin(), val_obj.end(), other.val_obj.begin(), value_equivalence());
+        return typeid(*this) == typeid(other) && is_hashable() && other.is_hashable() && std::equal(val_obj.begin(), val_obj.end(), other.val_obj.begin(), other.val_obj.end(), value_equivalence());
     }
 };
 using value_object = std::shared_ptr<value_object_t>;
@@ -647,6 +661,7 @@ public:
     size_t count() const { return args.size(); }
     void push_back(const value & val);
     void push_front(const value & val);
+    void ensure_kwargs(std::initializer_list<const char *> names = {}) const;
     void ensure_count(size_t min, size_t max = 999) const {
         size_t n = args.size();
         if (n < min || n > max) {
