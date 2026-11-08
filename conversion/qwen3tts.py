@@ -220,8 +220,12 @@ class Qwen3TTSSpeakerEncoderModel(MmprojModel):
         hparams["text_config"] = {"hidden_size": hparams["talker_config"]["hidden_size"]}
         # ECAPA-TDNN has a fixed 4-stage backbone, but MmprojModel.__init__ needs a n_block_keys.
         # The CustomVoice variant ships no speaker encoder, so its config lacks this key entirely.
-        if "speaker_encoder_config" in hparams:
+        self._has_spk_enc = "speaker_encoder_config" in hparams
+        if self._has_spk_enc:
             hparams["speaker_encoder_config"]["n_layers"] = 4
+        else:
+            # VoiceDesign/CustomVoice: no speaker encoder; dummy config only so MmprojModel.__init__ passes
+            hparams["speaker_encoder_config"] = {"n_layers": 4}
         super().__init__(dir_model, *args, hparams=hparams, **kwargs)
         self._wav_config_cache = None
 
@@ -230,9 +234,15 @@ class Qwen3TTSSpeakerEncoderModel(MmprojModel):
 
     def set_gguf_parameters(self):
         self.gguf_writer.add_file_type(self.ftype)
-        self.gguf_writer.add_clip_has_audio_encoder(True)
-        self.gguf_writer.add_clip_audio_projector_type(gguf.VisionProjectorType.QWEN3TTS_SPKENC)
+        if self._has_spk_enc:
+            self.gguf_writer.add_clip_has_audio_encoder(True)
+            self.gguf_writer.add_clip_audio_projector_type(gguf.VisionProjectorType.QWEN3TTS_SPKENC)
+        self._set_spk_enc_parameters()
+        self._set_gen_parameters()
 
+    def _set_spk_enc_parameters(self):
+        if not self._has_spk_enc:
+            return
         # handle speaker encoder config
         self.gguf_writer.add_audio_projection_dim(self.n_embd_text)
         # mel_spectrogram() front-end: sr=24000, n_fft=1024, hop=256, n_mels=128, fmin=0, fmax=12000 (=sr/2, the clip.cpp default)
@@ -245,6 +255,7 @@ class Qwen3TTSSpeakerEncoderModel(MmprojModel):
         self.gguf_writer.add_audio_feed_forward_length(1536)
         self.gguf_writer.add_audio_attention_layernorm_eps(1e-5)
 
+    def _set_gen_parameters(self):
         # handle code predictor config
         self.gguf_writer.add_clip_has_gen_audio_encoder(True)
         self.gguf_writer.add_clip_gen_audio_projector_type(gguf.VisionProjectorType.QWEN3TTS_GEN)
